@@ -1,0 +1,48 @@
+---
+- name: Deploy Centralized Prometheus and Grafana Stack through Docker
+  hosts: instance5
+  become: true
+
+  tasks:
+    - name: Create configuration directory
+      ansible.builtin.file:
+        path: /etc/prometheus
+        state: directory
+        mode: "0755"
+
+    - name: Generate centralized prometheus.yml config targeting app cluster
+      ansible.builtin.copy:
+        dest: /etc/prometheus/prometheus.yml
+        mode: "0644"
+        content: |
+          global:
+            scrape_interval: 15s
+
+          scrape_configs:
+            - job_name: 'production_app_cluster'
+              static_configs:
+                - targets:
+                    - 'instance1:9100'
+                    - 'instance2:9100'
+                    - 'instance3:9100'
+                    - 'instance4:9100'
+
+    - name: Launch Centralized Prometheus Database
+      community.docker.docker_container:
+        name: prometheus
+        image: prom/prometheus:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "9090:9090"
+        volumes:
+          - /etc/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+    - name: Launch Centralized Grafana UI Engine
+      community.docker.docker_container:
+        name: grafana
+        image: grafana/grafana:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "3000:3000"

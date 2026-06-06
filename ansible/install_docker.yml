@@ -1,45 +1,48 @@
 ---
 - name: Install Docker and Docker compose Stack
   hosts: all
-  become: yes
-  tasks:
-    - name: update apt cache
-      apt:
-        update_cache: yes
-        cache_valid_time: 3600
+  become: true
 
-    - name: Install prerequisite packages
-      apt:
+  tasks:
+    - name: Update apt package cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install required system dependencies
+      ansible.builtin.apt:
         name:
           - apt-transport-https
           - ca-certificates
-          - curl
           - software-properties-common
           - python3-pip
-      state: present
+        state: present
 
-    - name: add Docker official GPG key
-      apt_key:
+    - name: Add Docker GPG apt key
+      ansible.builtin.apt_key:
         url: https://download.docker.com/linux/ubuntu/gpg
         state: present
 
-    - name: Add Docker repository down the link
-      apt_repository:
-        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+    - name: Add Docker Repository to APT sources
+      ansible.builtin.apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
         state: present
 
-    - name: Install Docker CE engine and Compose plugin
-      apt:
+    - name: Install Docker Engine and CLI binaries
+      ansible.builtin.apt:
         name:
           - docker-ce
           - docker-ce-cli
           - containerd.io
-          - docker-compose-plugin
-      state: present
-      update_cache: yes
+        state: present
+        update_cache: true
 
-    - name: Verify Docker daemon service is running
-      service:
+    - name: Ensure Docker service is running and enabled on boot
+      ansible.builtin.systemd:
         name: docker
         state: started
-        enabled: yes
+        enabled: true
+
+    - name: Install Python Docker SDK required by Ansible Docker modules
+      ansible.builtin.pip:
+        name: docker
+        state: present

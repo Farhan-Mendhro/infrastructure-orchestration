@@ -43,7 +43,7 @@ locals {
 }
 
 resource "aws_key_pair" "ssh_key" {
-  key_name   = "my-aws-key"
+  key_name   = "infra-key"
   public_key = file(var.public_key)
 }
 

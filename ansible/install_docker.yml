@@ -4,22 +4,10 @@
   become: true
 
   tasks:
-    - name: Wait for apt lock to release
-      ansible.builtin.shell: |
-        while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
-              fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
-          sleep 5
-        done
-      changed_when: false
-
     - name: Enable universe repository
-      ansible.builtin.shell: add-apt-repository universe -y
-      args:
-        executable: /bin/bash
-
-    - name: Update apt cache
-      ansible.builtin.apt:
-        update_cache: true
+      ansible.builtin.apt_repository:
+        repo: "deb http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} universe"
+        state: present
 
     - name: Install required system dependencies
       ansible.builtin.apt:
@@ -29,6 +17,7 @@
           - software-properties-common
           - python3-pip
         state: present
+        update_cache: true
 
     - name: Add Docker GPG apt key
       ansible.builtin.apt_key:
@@ -37,7 +26,7 @@
 
     - name: Add Docker Repository to APT sources
       ansible.builtin.apt_repository:
-        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu jammy stable
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
         state: present
 
     - name: Install Docker Engine and CLI binaries

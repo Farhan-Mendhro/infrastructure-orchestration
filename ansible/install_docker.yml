@@ -10,7 +10,7 @@
 
     - name: Enable universe repository
       ansible.builtin.apt_repository:
-        repo: eb http://archive.ubuntu.com/ubuntu jammy universe
+        repo: deb http://archive.ubuntu.com/ubuntu jammy universe
         state: present
 
     - name: Update apt cache after enabling universe

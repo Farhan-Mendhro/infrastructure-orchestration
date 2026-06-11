@@ -4,23 +4,24 @@
   become: true
 
   tasks:
-    # CHANGE 1: Added raw cache initialization so fresh servers can read repositories
-    - name: Initialize empty apt cache
+    - name: Wait for cloud-init to finish clean setup
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+
+    - name: Force purge and re-initialize apt cache
       ansible.builtin.apt:
         update_cache: true
         force_apt_get: true
 
     - name: Enable universe repository
       ansible.builtin.apt_repository:
-        repo: "deb http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} universe"
+        repo: "deb http://archive.ubuntu.com/ubuntu jammy universe"
         state: present
 
-    # CHANGE 2: Isolated cache update to force indexing of newly unlocked universe packages
-    - name: Update apt cache after enabling universe
+    - name: Update apt cache for universe
       ansible.builtin.apt:
         update_cache: true
 
-    # FIX: This will now successfully find python3-pip
     - name: Install required system dependencies
       ansible.builtin.apt:
         name:
@@ -30,24 +31,21 @@
           - python3-pip
         state: present
 
-    # CHANGE 3: Modernized key directory creation (replaces deprecated apt_key)
     - name: Create directory for Docker apt keyring
       ansible.builtin.file:
         path: /etc/apt/keyrings
         state: directory
         mode: "0755"
 
-    # CHANGE 4: Securely downloads the GPG key natively
     - name: Add Docker GPG apt key safely
       ansible.builtin.get_url:
         url: https://download.docker.com/linux/ubuntu/gpg
         dest: /etc/apt/keyrings/docker.asc
         mode: "0644"
 
-    # CHANGE 5: Dynamically fetches repository using system facts instead of hardcoded 'focal'
-    - name: Add Docker Repository to APT sources dynamically
+    - name: Add Docker Repository to APT sources
       ansible.builtin.apt_repository:
-        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable"
         state: present
         filename: docker
 

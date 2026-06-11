@@ -14,7 +14,7 @@
           - apt-transport-https
           - ca-certificates
           - software-properties-common
-          - python3-full
+          - python3-pip
         state: present
 
     - name: Add Docker GPG apt key
@@ -24,7 +24,7 @@
 
     - name: Add Docker Repository to APT sources
       ansible.builtin.apt_repository:
-        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu noble stable
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu jammy stable
         state: present
 
     - name: Install Docker Engine and CLI binaries

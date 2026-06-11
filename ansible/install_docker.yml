@@ -23,7 +23,7 @@
           - apt-transport-https
           - ca-certificates
           - software-properties-common
-          - python3-docker
+          - python3-pip
         state: present
 
     - name: Add Docker GPG apt key

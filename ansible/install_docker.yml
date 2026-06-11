@@ -8,6 +8,15 @@
       ansible.builtin.apt:
         update_cache: true
 
+    - name: Enable universe repository
+      ansible.builtin.apt_repository:
+        repo: deb http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} universe
+        state: present
+
+    - name: Update apt cache after enabling universe
+      ansible.builtin.apt:
+        update_cache: true
+
     - name: Install required system dependencies
       ansible.builtin.apt:
         name:

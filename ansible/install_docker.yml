@@ -16,7 +16,6 @@
       ansible.builtin.shell: add-apt-repository universe -y
       args:
         executable: /bin/bash
-        become: true
 
     - name: Update apt cache
       ansible.builtin.apt:

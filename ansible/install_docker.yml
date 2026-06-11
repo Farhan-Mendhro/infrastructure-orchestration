@@ -4,16 +4,21 @@
   become: true
 
   tasks:
-    - name: Update apt package cache
-      ansible.builtin.apt:
-        update_cache: true
+    - name: Wait for apt lock to release
+      ansible.builtin.shell: |
+        while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+              fuser /var/lib/apt/lists/lock >/dev/null 2>&1; do
+          sleep 5
+        done
+      changed_when: false
 
     - name: Enable universe repository
-      ansible.builtin.apt_repository:
-        repo: deb http://archive.ubuntu.com/ubuntu jammy universe
-        state: present
+      ansible.builtin.shell: add-apt-repository universe -y
+      args:
+        executable: /bin/bash
+        become: true
 
-    - name: Update apt cache after enabling universe
+    - name: Update apt cache
       ansible.builtin.apt:
         update_cache: true
 

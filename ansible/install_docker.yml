@@ -4,31 +4,17 @@
   become: true
 
   tasks:
-    - name: Wait for cloud-init to finish clean setup
-      ansible.builtin.command: cloud-init status --wait
-      changed_when: false
-
-    - name: Force purge and re-initialize apt cache
+    - name: Initialize base apt package cache
       ansible.builtin.apt:
         update_cache: true
         force_apt_get: true
 
-    - name: Enable universe repository
-      ansible.builtin.apt_repository:
-        repo: "deb http://archive.ubuntu.com/ubuntu jammy universe"
-        state: present
-
-    - name: Update apt cache for universe
-      ansible.builtin.apt:
-        update_cache: true
-
-    - name: Install required system dependencies
+    - name: Install underlying system dependencies
       ansible.builtin.apt:
         name:
           - apt-transport-https
           - ca-certificates
           - software-properties-common
-          - python3-pip
         state: present
 
     - name: Create directory for Docker apt keyring
@@ -49,7 +35,7 @@
         state: present
         filename: docker
 
-    - name: Install Docker Engine and CLI binaries
+    - name: Install Docker Engine and Native CLI Plugins
       ansible.builtin.apt:
         name:
           - docker-ce
@@ -65,8 +51,3 @@
         name: docker
         state: started
         enabled: true
-
-    - name: Install Python Docker SDK required by Ansible Docker modules
-      ansible.builtin.pip:
-        name: docker
-        state: present

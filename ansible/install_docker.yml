@@ -2,30 +2,42 @@
 - name: Install Docker using official script
   hosts: all
   become: true
-  gather_facts: yes
+  gather_facts: true
 
   tasks:
-    - name: Wait for cloud-init to finish (prevents apt locks)
+    - name: Wait for cloud-init
       ansible.builtin.command: cloud-init status --wait
       changed_when: false
 
-    - name: Run Docker official installation script
+    - name: Install required prereqs
+      ansible.builtin.apt:
+        name:
+          - curl
+          - ca-certificates
+        state: present
+        update_cache: true
+
+    - name: Run Docker installation script (force run even in check mode)
       ansible.builtin.shell: |
+        set -e
         curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
         sh /tmp/get-docker.sh
       args:
         creates: /usr/bin/docker
-      environment:
-        CHANNEL: stable
+      check_mode: false
+      register: docker_install
 
-    - name: Ensure Docker service is running and enabled
+    - name: Debug installation output if failed
+      ansible.builtin.debug:
+        var: docker_install
+      when: docker_install is failed
+
+    - name: Ensure Docker is installed
+      ansible.builtin.command: which docker
+      changed_when: false
+
+    - name: Start and enable Docker service
       ansible.builtin.systemd:
         name: docker
         state: started
         enabled: true
-
-    - name: Add ubuntu user to docker group (optional, for convenience)
-      ansible.builtin.user:
-        name: ubuntu
-        groups: docker
-        append: yes

@@ -1,67 +1,31 @@
 ---
-- name: Install Docker and Docker Compose Stack
+- name: Install Docker using official script
   hosts: all
   become: true
+  gather_facts: yes
 
   tasks:
-    - name: Wait for cloud-init to complete
+    - name: Wait for cloud-init to finish (prevents apt locks)
       ansible.builtin.command: cloud-init status --wait
       changed_when: false
 
-    - name: Update apt cache
-      ansible.builtin.apt:
-        update_cache: true
-        force_apt_get: true
-
-    - name: Install dependencies
-      ansible.builtin.apt:
-        name:
-          - apt-transport-https
-          - ca-certificates
-          - curl
-          - gnupg
-        state: present
-
-    - name: Create keyrings directory
-      ansible.builtin.file:
-        path: /etc/apt/keyrings
-        state: directory
-        mode: "0755"
-
-    - name: Download Docker GPG key (Armored)
-      ansible.builtin.get_url:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        dest: /tmp/docker.asc
-        mode: "0644"
-
-    - name: De-armor Docker GPG key to binary format
-      ansible.builtin.command: gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.asc
+    - name: Run Docker official installation script
+      ansible.builtin.shell: |
+        curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+        sh /tmp/get-docker.sh
       args:
-        creates: /etc/apt/keyrings/docker.gpg
+        creates: /usr/bin/docker
+      environment:
+        CHANNEL: stable
 
-    - name: Add Docker repository
-      ansible.builtin.copy:
-        content: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu jammy stable\n"
-        dest: /etc/apt/sources.list.d/docker.list
-        mode: "0644"
-
-    - name: Update apt cache with Docker repo
-      ansible.builtin.apt:
-        update_cache: true
-        force_apt_get: true
-
-    - name: Install Docker
-      ansible.builtin.apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-buildx-plugin
-          - docker-compose-plugin
-        state: present
-
-    - name: Start and enable Docker
+    - name: Ensure Docker service is running and enabled
       ansible.builtin.systemd:
         name: docker
         state: started
         enabled: true
+
+    - name: Add ubuntu user to docker group (optional, for convenience)
+      ansible.builtin.user:
+        name: ubuntu
+        groups: docker
+        append: yes

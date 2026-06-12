@@ -19,6 +19,7 @@
           - apt-transport-https
           - ca-certificates
           - curl
+          - gnupg
         state: present
 
     - name: Create keyrings directory
@@ -27,15 +28,20 @@
         state: directory
         mode: "0755"
 
-    - name: Download Docker GPG key
+    - name: Download Docker GPG key (Armored)
       ansible.builtin.get_url:
         url: https://download.docker.com/linux/ubuntu/gpg
-        dest: /etc/apt/keyrings/docker.asc
+        dest: /tmp/docker.asc
         mode: "0644"
+
+    - name: De-armor Docker GPG key to binary format
+      ansible.builtin.command: gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.asc
+      args:
+        creates: /etc/apt/keyrings/docker.gpg
 
     - name: Add Docker repository
       ansible.builtin.copy:
-        content: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable\n"
+        content: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu jammy stable\n"
         dest: /etc/apt/sources.list.d/docker.list
         mode: "0644"
 

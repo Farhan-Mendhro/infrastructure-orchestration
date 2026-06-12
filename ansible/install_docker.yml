@@ -1,27 +1,60 @@
 ---
-- name: Install Docker and Docker compose Stack
+- name: Install Docker and Docker Compose Stack
   hosts: all
   become: true
 
   tasks:
-    - name: Initialize base apt package cache
+    - name: Wait for cloud-init to complete
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+
+    - name: Update apt cache
       ansible.builtin.apt:
         update_cache: true
         force_apt_get: true
 
-    - name: Download official Docker installation script
-      ansible.builtin.get_url:
-        url: https://get.docker.com
-        dest: /tmp/get-docker.sh
+    - name: Install dependencies
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+        state: present
+
+    - name: Create keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
         mode: "0755"
 
-    # CHANGE: Swapped ansible.builtin.shell for ansible.builtin.command
-    - name: Execute Docker installation script
-      ansible.builtin.command: sh /tmp/get-docker.sh
-      register: script_output
-      changed_when: true
+    - name: Download Docker GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
 
-    - name: Ensure Docker service is running and enabled on boot
+    - name: Add Docker repository
+      ansible.builtin.copy:
+        content: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable\n"
+        dest: /etc/apt/sources.list.d/docker.list
+        mode: "0644"
+
+    - name: Update apt cache with Docker repo
+      ansible.builtin.apt:
+        update_cache: true
+        force_apt_get: true
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Start and enable Docker
       ansible.builtin.systemd:
         name: docker
         state: started

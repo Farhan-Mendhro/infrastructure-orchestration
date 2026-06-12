@@ -1,49 +1,44 @@
 ---
-# Playbook to set up a centralized telemetery node running Prometheus and Grafana
 - name: Deploy Centralized Prometheus and Grafana Stack through Docker
-  hosts: instance5 # Targets only the dedicated node for monitoring node
-  become: true # Requires sudo privilegs to write to system directories and manage Docker
+  hosts: all
+  become: true
 
   tasks:
     - name: Create configuration directory
       ansible.builtin.file:
         path: /etc/prometheus
         state: directory
-        mode: "0755" # Grants read/execute permissions to all users, write only to owner
+        mode: "0755"
+      when: inventory_hostname == play_hosts[4]
 
-    - name: Generate centralized prometheus.yml config targeting app cluster
+    - name: Generate centralized prometheus.yml config
       ansible.builtin.copy:
         dest: /etc/prometheus/prometheus.yml
-        mode: "0644" # Standard secure file permissions (read/write owner, read others)
+        mode: "0644"
         content: |
           global:
             scrape_interval: 15s
-
           scrape_configs:
             - job_name: 'production_app_cluster'
               static_configs:
                 - targets:
-                    - 'instance1:9100' # Scrape target 1 Node Exporter metrics
-                    - 'instance2:9100' # Scrape target 2 Node Exporter metrics
-                    - 'instance3:9100' # Scrape target 3 Node Exporter metrics
-                    - 'instance4:9100' # Scrape target 4 Node Exporter metrics
+                    - '{{ play_hosts[0] }}:9100'
+                    - '{{ play_hosts[1] }}:9100'
+                    - '{{ play_hosts[2] }}:9100'
+                    - '{{ play_hosts[3] }}:9100'
+      when: inventory_hostname == play_hosts[4]
 
-    - name: Launch Centralized Prometheus Database
-      community.docker.docker_container:
-        name: prometheus
-        image: prom/prometheus:latest
-        state: started
-        restart_policy: always # Restart container if host reboot or engine crashes
-        ports:
-          - "9090:9090" # Map host port 9090 to container port 9090
-        volumes:
-          - /etc/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml # Mounts config
+    - name: Launch Prometheus
+      ansible.builtin.command: >
+        docker run -d --name prometheus --restart always -p 9090:9090
+        -v /etc/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+        prom/prometheus:latest
+      when: inventory_hostname == play_hosts[4]
+      changed_when: false
 
-    - name: Launch Centralized Grafana UI Engine
-      community.docker.docker_container:
-        name: grafana
-        image: grafana/grafana:latest
-        state: started
-        restart_policy: always # Restart container automatically on failure
-        ports:
-          - "3000:3000" # Maps hosts port 3000 to Grafana dashboard web port
+    - name: Launch Grafana
+      ansible.builtin.command: >
+        docker run -d --name grafana --restart always -p 3000:3000
+        grafana/grafana:latest
+      when: inventory_hostname == play_hosts[4]
+      changed_when: false

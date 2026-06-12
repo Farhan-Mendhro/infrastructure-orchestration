@@ -9,46 +9,17 @@
         update_cache: true
         force_apt_get: true
 
-    - name: Install underlying system dependencies
-      ansible.builtin.apt:
-        name:
-          - apt-transport-https
-          - ca-certificates
-          - software-properties-common
-        state: present
-
-    - name: Create directory for Docker apt keyring
-      ansible.builtin.file:
-        path: /etc/apt/keyrings
-        state: directory
+    - name: Download official Docker installation script
+      ansible.builtin.get_url:
+        url: https://get.docker.com
+        dest: /tmp/get-docker.sh
         mode: "0755"
 
-    - name: Add Docker GPG apt key safely
-      ansible.builtin.get_url:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        dest: /etc/apt/keyrings/docker.asc
-        mode: "0644"
-
-    - name: Add Docker Repository to APT sources directly
-      ansible.builtin.copy:
-        content: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable\n"
-        dest: /etc/apt/sources.list.d/docker.list
-        mode: "0644"
-
-    - name: Force apt cache update for new Docker repo
-      ansible.builtin.apt:
-        update_cache: true
-        force_apt_get: true
-
-    - name: Install Docker Engine and Native CLI Plugins
-      ansible.builtin.apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-buildx-plugin
-          - docker-compose-plugin
-        state: present
+    # CHANGE: Swapped ansible.builtin.shell for ansible.builtin.command
+    - name: Execute Docker installation script
+      ansible.builtin.command: sh /tmp/get-docker.sh
+      register: script_output
+      changed_when: true
 
     - name: Ensure Docker service is running and enabled on boot
       ansible.builtin.systemd:

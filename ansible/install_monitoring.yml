@@ -4,13 +4,6 @@
   become: true
 
   tasks:
-    - name: Launch Node Exporter container on all hosts
-      ansible.builtin.command: >
-        docker run -d --name node-exporter --restart always
-        --net="host"
-        prom/node-exporter:latest
-      changed_when: false
-
     - name: Create configuration directory
       ansible.builtin.file:
         path: /etc/prometheus

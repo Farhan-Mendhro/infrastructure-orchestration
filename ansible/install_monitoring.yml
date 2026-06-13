@@ -16,12 +16,24 @@
         prom/node-exporter:latest
       changed_when: false
 
+    - name: Remove existing prometheus container if present
+      ansible.builtin.command: docker rm -f prometheus
+      failed_when: false
+      changed_when: false
+      when: inventory_hostname == ansible_play_batch[-1]
+
+    - name: Remove existing grafana container if present
+      ansible.builtin.command: docker rm -f grafana
+      failed_when: false
+      changed_when: false
+      when: inventory_hostname == ansible_play_batch[-1]
+
     - name: Create configuration directory
       ansible.builtin.file:
         path: /etc/prometheus
         state: directory
         mode: "0755"
-      when: inventory_hostname == ansible_play_batch[4]
+      when: inventory_hostname == ansible_play_batch[-1]
 
     - name: Generate centralized prometheus.yml config
       ansible.builtin.copy:
@@ -34,23 +46,23 @@
             - job_name: 'production_app_cluster'
               static_configs:
                 - targets:
-                    - '{{ play_hosts[0] }}:9100'
-                    - '{{ play_hosts[1] }}:9100'
-                    - '{{ play_hosts[2] }}:9100'
-                    - '{{ play_hosts[3] }}:9100'
-      when: inventory_hostname == play_hosts[4]
+                    - '{{ ansible_play_batch[0] }}:9100'
+                    - '{{ ansible_play_batch[1] }}:9100'
+                    - '{{ ansible_play_batch[2] }}:9100'
+                    - '{{ ansible_play_batch[3] }}:9100'
+      when: inventory_hostname == ansible_play_batch[-1]
 
     - name: Launch Prometheus
       ansible.builtin.command: >
         docker run -d --name prometheus --restart always -p 9090:9090
         -v /etc/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
         prom/prometheus:latest
-      when: inventory_hostname == play_hosts[4]
+      when: inventory_hostname == ansible_play_batch[-1]
       changed_when: false
 
     - name: Launch Grafana
       ansible.builtin.command: >
         docker run -d --name grafana --restart always -p 3000:3000
         grafana/grafana:latest
-      when: inventory_hostname == play_hosts[4]
+      when: inventory_hostname == ansible_play_batch[-1]
       changed_when: false

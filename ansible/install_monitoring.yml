@@ -12,7 +12,7 @@
     - name: Launch Node exporter container on all hosts
       ansible.builtin.command: >
         docker run -d --name node-exporter --restart always
-        --network hosts
+        --network host
         prom/node-exporter:latest
       changed_when: false
 
@@ -21,7 +21,7 @@
         path: /etc/prometheus
         state: directory
         mode: "0755"
-      when: inventory_hostname == play_hosts[4]
+      when: inventory_hostname == ansible_play_batch[4]
 
     - name: Generate centralized prometheus.yml config
       ansible.builtin.copy:

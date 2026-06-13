@@ -1,43 +1,50 @@
 ---
+# Setup play targeting all inventory hosts to install Docker Engine via the official convenience script
 - name: Install Docker using official script
   hosts: all
-  become: true
-  gather_facts: true
+  become: true # Elevates privileges to root to perform software installation tasks
+  gather_facts: true # Gathers target system information variables required by the runtime environment
 
   tasks:
+    # Blocks execution until cloud-init finishes post-provisioning boot routines to prevent apt lock contention
     - name: Wait for cloud-init
       ansible.builtin.command: cloud-init status --wait
-      changed_when: false
+      changed_when: false # Prevents this status-check command from falsely reporting an infrastructure change
 
+    # Installs basic dependencies needed to download files over HTTPS and manage SSL certificates
     - name: Install required prereqs
       ansible.builtin.apt:
         name:
           - curl
           - ca-certificates
-        state: present
-        update_cache: true
+        state: present # Assures these packges are actively installed on the system
+        update_cache: true # Forces an apt repository index update before executing the installation
 
+    # Downloads and pipes the official Docker installation script straight into the shell interpreter
     - name: Run Docker installation script (force run even in check mode)
       ansible.builtin.shell: |
         set -e
         curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
         sh /tmp/get-docker.sh
       args:
-        creates: /usr/bin/docker
-      check_mode: false
-      register: docker_install
+        creates: /usr/bin/docker # Optimization: Skips running the entire block if this binary file path already exists
+      check_mode: false # Forces execution even during dry-run (--check) phases to allow continuous pipeline analysis
+      register: docker_install # Captures stdout, stderr, and return codes into a variable for validation
 
+    # Outputs complete execution diagnostics if the shell installation step encounters a non-zero return code
     - name: Debug installation output if failed
       ansible.builtin.debug:
         var: docker_install
-      when: docker_install is failed
+      when: docker_install is failed # Evaluates condition check; prints data only if the registered variable registers a failure
 
+    # Explicitly cross-checks filesystem bin path structures to confirm the docker binary is globally reachable
     - name: Ensure Docker is installed
       ansible.builtin.command: which docker
-      changed_when: false
+      changed_when: false # Suppresses modified reporting status since this is an inspection task
 
+    # Configures systemd backend parameters to manage the active container runtime process lifecycle
     - name: Start and enable Docker service
       ansible.builtin.systemd:
         name: docker
-        state: started
-        enabled: true
+        state: started # Activates the service immediately if it is dropped or stopped
+        enabled: true # Modifies system target links to ensure Docker initiates automatically during system boots

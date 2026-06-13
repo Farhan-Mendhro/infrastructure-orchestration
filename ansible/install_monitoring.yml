@@ -7,7 +7,7 @@
     - name: Launch Node exporter container on all hosts
       ansible.builtin.command: >
         docker run -d --name node-exporter --restart always
-        --net="hosts"
+        --network hosts
         prom/node-exporter:latest
       changed_when: false
 

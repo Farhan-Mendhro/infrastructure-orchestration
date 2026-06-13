@@ -4,6 +4,11 @@
   become: true
 
   tasks:
+    - name: Remove existing node-exporter container if present
+      ansible.builtin.command: docker rm -f node-exporter
+      failed_when: false
+      changed_when: false
+
     - name: Launch Node exporter container on all hosts
       ansible.builtin.command: >
         docker run -d --name node-exporter --restart always

@@ -21,6 +21,8 @@ This project implements a full infrastructure lifecycle across three layers:
 3. **Observability** — A containerized monitoring stack runs across the cluster. Worker nodes expose bare-metal metrics via `node-exporter`. A dedicated monitoring node runs Prometheus and Grafana, with dynamic scrape target generation and Docker bridge-based internal routing.
 
 ---
+<img width="1408" height="768" alt="infra-orchestration" src="https://github.com/user-attachments/assets/61d7285a-5b51-4ce8-bd5b-ef5333440ee7" />
+
 
 ## Architecture & Network Flow
 

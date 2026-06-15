@@ -1,51 +1,52 @@
 ---
-# Orchestration play to distribute node-exporter across workers and centralize core monitoring engines on a single host
+# OBSERVABILITY ORCHESTRATION: Manages containerized monitoring agents across worker and master nodes
 - name: Deploy Centralized Prometheus and Grafana Stack through Docker
   hosts: all
-  become: true # Requires full root permissions to interface with the Docker daemon sockets
+  become: true
 
   tasks:
-    # Tears down older node-exporter containers to prevent deployment naming blocks
+    # RECOVERY/IDEMPOTENCY: Cleans up old container states to avoid 'Name already in use' deployment crashes
     - name: Remove existing node-exporter container if present
       ansible.builtin.command: docker rm -f node-exporter
-      failed_when: false # Prevents playbook failure loops if no container matching the target name is currently active
-      changed_when: false # Keeps telemetry clean by not counting a cleanup task as an infrastructure state alteration
+      failed_when: false
+      changed_when: false
 
-    # Deploys node-exporter container maps using host network namespaces to capture true, bare-metal network interface counters
+    # NETWORKING PRIMITIVE: Bypasses Docker's virtual network bridge isolation.
+    # Mappings run directly on the host's system interface to scrape raw hardware metrics.
     - name: Launch Node exporter container on all hosts
       ansible.builtin.command: >
         docker run -d --name node-exporter --restart always
         --network host
         prom/node-exporter:latest
-      changed_when: false # Drops tracking modifications since the daemon handles active container state cycles
+      changed_when: false
 
-    # Purges old Prometheus instances specifically on the designated centralized metrics engine node
+    # DYNAMIC NODE SELECTION: 'ansible_play_batch[-1]' targets the final server index in your runtime array.
+    # This keeps your configuration dynamic, isolating the engine strictly to Node 5 without hardcoded IPs.
     - name: Remove existing prometheus container if present
       ansible.builtin.command: docker rm -f prometheus
-      failed_when: false # Safeguards execution flow from crashing if the engine container does not exist
-      changed_when: false # Suppresses altered status metrics reports
-      when: inventory_hostname == ansible_play_batch[-1] # Targets execution exclusively to the final host index position in the current execution block
+      failed_when: false
+      changed_when: false
+      when: inventory_hostname == ansible_play_batch[-1]
 
-    # Purges old Grafana web instances specifically on the designated centralized metrics engine node
     - name: Remove existing grafana container if present
       ansible.builtin.command: docker rm -f grafana
-      failed_when: false # Prevents pipeline blocks if the visualization engine is not found on disk
-      changed_when: false # Bypasses tracking stats modifications
-      when: inventory_hostname == ansible_play_batch[-1] # Ensures execution runs solely on the target central monitoring engine
+      failed_when: false
+      changed_when: false
+      when: inventory_hostname == ansible_play_batch[-1]
 
-    # Sets up the destination config repository tree path on the target monitoring host
     - name: Create configuration directory
       ansible.builtin.file:
         path: /etc/prometheus
         state: directory
-        mode: "0755" # Applies strict directory permissions: Owner gets read/write/execute, others read/execute
-      when: inventory_hostname == ansible_play_batch[-1] # Isolates directory construction to the monitoring manager node
+        mode: "0755"
+      when: inventory_hostname == ansible_play_batch[-1]
 
-    # Generates the definitive prometheus.yml system configuration file, mapping target application node scrape endpoints
+    # JINJA2 TEMPLATING: Automatically extracts runtime IP addresses of your first 4 nodes (0 to 3)
+    # to feed them directly into Prometheus as active metrics scrape targets.
     - name: Generate centralized prometheus.yml config
       ansible.builtin.copy:
         dest: /etc/prometheus/prometheus.yml
-        mode: "0644" # Restricts direct configuration file editing access exclusively to the root user
+        mode: "0644"
         content: |
           global:
             scrape_interval: 15s
@@ -57,21 +58,21 @@
                     - '{{ ansible_play_batch[1] }}:9100'
                     - '{{ ansible_play_batch[2] }}:9100'
                     - '{{ ansible_play_batch[3] }}:9100'
-      when: inventory_hostname == ansible_play_batch[-1] # Drops execution across worker clusters; processes file map only on the final host
+      when: inventory_hostname == ansible_play_batch[-1]
 
-    # Boots the primary Prometheus database collector container, mapping the local file configurations via system host mounts
+    # VOLUME MOUNT: Mounts the configuration file generated above from the host system into the container filesystem
     - name: Launch Prometheus
       ansible.builtin.command: >
         docker run -d --name prometheus --restart always -p 9090:9090
         -v /etc/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
         prom/prometheus:latest
-      when: inventory_hostname == ansible_play_batch[-1] # Isolates time-series operations to the tracking node
-      changed_when: false # Ignores default change evaluation responses
+      when: inventory_hostname == ansible_play_batch[-1]
+      changed_when: false
 
-    # Deploys the web visualization dashboard application layer, mapping external HTTP traffic ingress to internal port 3000
+    # WEB DASHBOARD INGRESS: Exposes port 3000 to allow public web browser traffic into the dashboard visualization UI
     - name: Launch Grafana
       ansible.builtin.command: >
         docker run -d --name grafana --restart always -p 3000:3000
         grafana/grafana:latest
-      when: inventory_hostname == ansible_play_batch[-1] # Ensures metrics graphics engines do not initialize on cluster worker hosts
-      changed_when: false # Skips recording execution status variations
+      when: inventory_hostname == ansible_play_batch[-1]
+      changed_when: false

@@ -31,7 +31,7 @@ This project solves all three layers in a single command — `git push`. Spaceli
 |---|---|---|
 | `spacelift/infra-orchestration` | VCS push to `main` | Runs Terraform — provisions 5 EC2 instances |
 | `spacelift/ansible` | Depends on `infra-orchestration` | Runs `install_docker.yml` — installs Docker CE across all nodes |
-| `spacelift/ansible-monitoring` | Depends on `spacelift/ansible` | Runs `install_monitoring.yml` — deploys Prometheus and Grafana stack |
+| `spacelift/ansible-monitoring` | Depends on `infra-orchestration` | Runs `install_monitoring.yml` — deploys Prometheus and Grafana stack |
 
 All three stacks are chained via Spacelift stack dependencies. A single `git push origin main` triggers the full pipeline in sequence.
 

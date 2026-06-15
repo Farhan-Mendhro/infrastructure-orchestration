@@ -12,48 +12,27 @@ End-to-end infrastructure orchestration pipeline provisioning 5 AWS EC2 instance
 
 ---
 
-## Project Overview
+## Problem Statement
 
-This project implements a full infrastructure lifecycle across three layers:
+Managing infrastructure manually at scale is slow, error-prone, and not repeatable. Spinning up EC2 instances through the AWS Console has no version control and cannot be automated. Installing Docker across multiple nodes manually introduces configuration drift. Setting up monitoring node-by-node is fragile and produces inconsistent results.
 
-1. **Provisioning** — Terraform provisions 5 EC2 instances. Spacelift manages state, plan/apply execution, and CI/CD triggers via VCS integration.
-2. **Configuration** — Ansible configures all nodes: purges legacy packages, installs Docker Engine CE, enables the systemd service, and deploys the monitoring stack.
-3. **Observability** — A containerized monitoring stack runs across the cluster. Worker nodes expose bare-metal metrics via `node-exporter`. A dedicated monitoring node runs Prometheus and Grafana, with dynamic scrape target generation and Docker bridge-based internal routing.
+This project solves all three layers in a single command — `git push`. Spacelift orchestrates a dependency-chained stack pipeline: infrastructure provisioning triggers Docker installation, which triggers monitoring stack deployment. No manual console interaction at any layer.
 
 ---
-<img width="1408" height="768" alt="infra-orchestration" src="https://github.com/user-attachments/assets/61d7285a-5b51-4ce8-bd5b-ef5333440ee7" />
-
 
 ## Architecture & Network Flow
 
-### Logical Topology
+> See architecture diagram above for full visual topology.
 
-```
-+---------------------+          Spacelift CI/CD         +-------------------+
-|   Git Repository    |  -------------------------------->|   Spacelift Stack |
-|   (Terraform IaC)   |          VCS Push Trigger        |   State + Apply   |
-+---------------------+                                   +-------------------+
-                                                                    |
-                                                         Terraform apply
-                                                                    |
-                                        +--------------------------+---------------------------+
-                                        |                          |                           |
-                               +--------+-------+        +---------+------+          +---------+------+
-                               |   EC2 Node 1   |        |   EC2 Node 2   |   ...    |   EC2 Node 5   |
-                               |   Worker       |        |   Worker       |          |   Monitoring   |
-                               +----------------+        +----------------+          +----------------+
-                                        |                          |                           |
-                               node-exporter              node-exporter              Prometheus :9090
-                               --network host             --network host             Grafana    :3000
-                               port 9100                  port 9100                           |
-                                        |                          |                           |
-                                        +----------+---------------+                           |
-                                                   |       Prometheus scrapes                  |
-                                                   +-------------------------------------------+
-                                                         <node_ip>:9100 (x4 targets)
+### Spacelift Stack Pipeline
 
-Grafana --> 172.17.0.1:9090 (Docker bridge gateway) --> Prometheus container
-```
+| Stack | Trigger | Responsibility |
+|---|---|---|
+| `spacelift/infra-orchestration` | VCS push to `main` | Runs Terraform — provisions 5 EC2 instances |
+| `spacelift/ansible` | Depends on `infra-orchestration` | Runs `install_docker.yml` — installs Docker CE across all nodes |
+| `spacelift/ansible-monitoring` | Depends on `spacelift/ansible` | Runs `install_monitoring.yml` — deploys Prometheus and Grafana stack |
+
+All three stacks are chained via Spacelift stack dependencies. A single `git push origin main` triggers the full pipeline in sequence.
 
 ### Node Role Assignment
 
@@ -67,25 +46,11 @@ Grafana --> 172.17.0.1:9090 (Docker bridge gateway) --> Prometheus container
 
 ### Network Configuration
 
-| Component | Network Mode | Routing |
+| Component | Network Mode | Reason |
 |---|---|---|
 | `node-exporter` (Nodes 1-4) | `--network host` | Exposes bare-metal metrics directly on host interface — no NAT, no bridge overhead |
-| `prometheus` (Node 5) | Bridge | Scrapes worker nodes via their public/private IPs on port 9100 |
+| `prometheus` (Node 5) | Bridge | Scrapes worker nodes via their IPs on port 9100 |
 | `grafana` (Node 5) | Bridge | Routes to Prometheus via Docker bridge gateway `172.17.0.1:9090` |
-
----
-
-## Tech Stack
-
-| Tool | Layer | Purpose |
-|---|---|---|
-| Terraform | Provisioning | Declares EC2 infrastructure as code |
-| Spacelift | CI/CD | Stack orchestration, remote state, plan/apply pipeline |
-| AWS EC2 | Compute | 5 Ubuntu instances — worker and monitoring roles |
-| Ansible | Configuration Management | Docker installation and monitoring stack deployment |
-| Docker | Runtime | Container execution across all nodes |
-| Prometheus | Metrics | Scrapes and stores node-level telemetry |
-| Grafana | Visualization | Dashboards over Prometheus datasource |
 
 ---
 
@@ -94,13 +59,11 @@ Grafana --> 172.17.0.1:9090 (Docker bridge gateway) --> Prometheus container
 ```
 infrastructure-orchestration/
 |
-|-- main.tf                     # Terraform — EC2 provisioning (5 instances)
-|-- variables.tf                # Input variable declarations
-|-- outputs.tf                  # Output values (public IPs, instance IDs)
-|-- terraform.tfvars            # Variable values (excluded from version control)
+|-- spacelift_key.pub           # Public key injected into EC2 instances for Spacelift SSH access
+|-- .gitignore
 |
++-- tf/                         # Terraform — EC2 provisioning (5 instances)
 +-- ansible/
-    |-- inventory.ini           # All 5 node IPs grouped under [all]
     |-- install_docker.yml      # Playbook — Docker Engine CE installation
     +-- install_monitoring.yml  # Playbook — Prometheus + Grafana stack deployment
 ```
@@ -109,152 +72,56 @@ infrastructure-orchestration/
 
 ## Prerequisites
 
-### AWS IAM
-
-The IAM user or role used by Spacelift requires the following minimum permissions:
-
-| Permission | Purpose |
-|---|---|
-| `ec2:RunInstances` | Launch EC2 instances |
-| `ec2:DescribeInstances` | Read instance state for Terraform refresh |
-| `ec2:TerminateInstances` | Destroy infrastructure on `terraform destroy` |
-| `ec2:CreateSecurityGroup` / `ec2:AuthorizeSecurityGroupIngress` | Configure inbound rules for SSH, 9090, 9100, 3000 |
-
-### Spacelift Configuration
-
-- A Spacelift **Stack** connected to this repository via VCS integration.
-- Stack root set to the directory containing `main.tf`.
-- **Administrative IAM credentials** injected as Spacelift environment variables:
-  - `AWS_ACCESS_KEY_ID`
-  - `AWS_SECRET_ACCESS_KEY`
-  - `AWS_DEFAULT_REGION`
-- **Auto-apply** enabled or manual apply triggered post-plan review.
-
-### Local Control Node
-
-```bash
-# Ansible
-sudo apt update && sudo apt install -y ansible
-
-# AWS collection (if provisioning via Ansible as well)
-ansible-galaxy collection install amazon.aws
-
-# SSH key — must match the key pair attached to EC2 instances at launch
-ssh-keygen -t rsa -b 4096 -f ~/.ssh/infra-key
-```
-
-### AWS Security Group — Inbound Rules
-
-| Port | Protocol | Purpose |
-|---|---|---|
-| 22 | TCP | Ansible SSH access |
-| 9100 | TCP | Prometheus scraping node-exporter |
-| 9090 | TCP | Prometheus UI / API access |
-| 3000 | TCP | Grafana dashboard access |
+- Three Spacelift stacks configured (`infra-orchestration`, `ansible`, `ansible-monitoring`) with stack dependencies set in the Spacelift UI.
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_DEFAULT_REGION` injected as environment variables in each stack.
+- `spacelift_key.pub` committed to the repository — Spacelift uses the corresponding private key to SSH into EC2 nodes for Ansible execution.
 
 ---
 
-## Deployment Instructions
+## Deployment
 
-### Step 1 — Provision Infrastructure via Spacelift
-
-Push to the connected branch to trigger the Spacelift pipeline:
+The entire pipeline is triggered by a single command:
 
 ```bash
 git push origin main
 ```
 
-Spacelift executes `terraform plan` automatically. Review the plan output in the Spacelift UI, then trigger apply. On completion, 5 EC2 instances are running in AWS.
+Spacelift detects the VCS push and executes the stack pipeline in order:
 
-Retrieve public IPs from Terraform outputs:
+1. **`infra-orchestration` stack** — runs `terraform apply`, provisions 5 EC2 instances in AWS.
+2. **`ansible` stack** — triggered automatically on `infra-orchestration` success, runs `install_docker.yml` across all 5 nodes.
+3. **`ansible-monitoring` stack** — triggered automatically on `ansible` success, runs `install_monitoring.yml`, deploys the full monitoring stack.
 
-```bash
-terraform output
-```
-
-### Step 2 — Update Ansible Inventory
-
-Populate `ansible/inventory.ini` with the 5 public IPs:
-
-```ini
-[all]
-<NODE_1_IP>   ansible_user=ubuntu   ansible_ssh_private_key_file=~/.ssh/infra-key
-<NODE_2_IP>   ansible_user=ubuntu   ansible_ssh_private_key_file=~/.ssh/infra-key
-<NODE_3_IP>   ansible_user=ubuntu   ansible_ssh_private_key_file=~/.ssh/infra-key
-<NODE_4_IP>   ansible_user=ubuntu   ansible_ssh_private_key_file=~/.ssh/infra-key
-<NODE_5_IP>   ansible_user=ubuntu   ansible_ssh_private_key_file=~/.ssh/infra-key
-```
-
-### Step 3 — Verify Connectivity
-
-```bash
-ansible all -i ansible/inventory.ini -m ping
-```
-
-### Step 4 — Install Docker Engine CE Across All Nodes
-
-```bash
-ansible-playbook ansible/install_docker.yml -i ansible/inventory.ini
-```
-
-`install_docker.yml` executes in order across all 5 nodes:
-- Purges legacy packages (`docker.io`, `docker-compose`, `containerd`, `runc`)
-- Installs required keyrings and adds the official Docker apt repository
-- Installs `docker-ce`, `docker-ce-cli`, `containerd.io`
-- Enables and starts the `docker` systemd service
-
-### Step 5 — Deploy Monitoring Stack
-
-```bash
-ansible-playbook ansible/install_monitoring.yml -i ansible/inventory.ini
-```
-
-Execution behavior:
-- **Nodes 1-4:** Stops and removes any existing `node-exporter` container, then runs `prom/node-exporter` with `--network host` on port 9100.
-- **Node 5** (resolved via `ansible_play_batch[-1]`): Generates a dynamic `prometheus.yml` scrape config targeting all 4 worker node IPs, deploys `prom/prometheus` on port 9090 with config volume mount, deploys `grafana/grafana` on port 3000.
-
-### Step 6 — Access Monitoring Interfaces
-
-| Interface | URL |
-|---|---|
-| Prometheus | `http://<NODE_5_IP>:9090` |
-| Grafana | `http://<NODE_5_IP>:3000` |
-| Node Exporter (per worker) | `http://<NODE_1-4_IP>:9100/metrics` |
-
-Default Grafana credentials: `admin` / `admin` — change on first login.
-
-Configure Grafana datasource:
-- Type: Prometheus
-- URL: `http://172.17.0.1:9090`
+No manual steps required after the push. Monitor progress in the Spacelift UI under each stack's run history.
 
 ---
 
 ## Technical Highlights
 
-### 1. Dynamic Monitoring Node Assignment via `ansible_play_batch[-1]`
+### Dynamic Monitoring Node Assignment
 
-Rather than hardcoding Node 5's IP as the monitoring node, `install_monitoring.yml` uses Ansible's `ansible_play_batch` list — the ordered list of hosts in the current play batch — and indexes the last element with `[-1]`. This resolves the final host in the inventory dynamically, making the playbook portable across inventory changes without modification.
+Rather than hardcoding Node 5's IP, `install_monitoring.yml` uses `ansible_play_batch[-1]` to dynamically resolve the last host in the play — making the playbook portable across inventory changes without modification.
 
 ```yaml
 when: inventory_hostname == ansible_play_batch[-1]
 ```
 
-### 2. Idempotent Container Deployment
+### Idempotent Container Deployment
 
-Before deploying any container, `install_monitoring.yml` explicitly stops and removes existing containers by name. This eliminates Docker's "container name already in use" conflict on re-runs and ensures every execution starts from a clean state — making the playbook safe to run repeatedly.
+Before deploying any container, existing containers are stopped and removed by name — eliminating Docker's naming conflict error on re-runs and making the playbook safe to execute repeatedly.
 
 ```yaml
-- name: Remove existing node-exporter container
+- name: Remove existing container
   ansible.builtin.shell: docker rm -f node-exporter || true
 ```
 
-### 3. Docker Bridge Gateway Routing for Grafana
+### Docker Bridge Gateway Routing
 
-`prom/prometheus` and `grafana/grafana` run as separate containers on Node 5's default Docker bridge network. Grafana cannot reach Prometheus via `localhost` because each container has an isolated network namespace. The Docker bridge gateway IP `172.17.0.1` — the host-side interface of the `docker0` bridge — is reachable from any container on the bridge network and routes traffic to other containers on the same host. Configuring Grafana's Prometheus datasource to `http://172.17.0.1:9090` resolves this without requiring a custom Docker network or `--network host` on Prometheus.
+Grafana and Prometheus run as separate containers on Node 5's default bridge network. Grafana cannot reach Prometheus via `localhost` due to isolated network namespaces. The Docker bridge gateway IP `172.17.0.1` — the host-side interface of the `docker0` bridge — is reachable from any container on the bridge, routing traffic to Prometheus without requiring a custom Docker network.
 
-### 4. Host Network Mode for Bare-Metal Metrics
+### Host Network Mode for Accurate Metrics
 
-`prom/node-exporter` runs with `--network host` on worker nodes. This bypasses the Docker bridge entirely and binds the exporter directly to the host network interface, exposing accurate bare-metal metrics — CPU, memory, disk, and network — that would otherwise reflect container-level isolation artifacts if run on a bridge network.
+`node-exporter` runs with `--network host` on worker nodes, binding directly to the host network interface. This exposes accurate bare-metal metrics that would otherwise reflect container-level isolation if run on a bridge network.
 
 ---
 

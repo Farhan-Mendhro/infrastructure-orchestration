@@ -12,9 +12,11 @@ End-to-end infrastructure orchestration pipeline provisioning 5 AWS EC2 instance
 
 ---
 
+## Architecture & Network Flow
+
 <img width="1408" height="768" alt="infra-orchestration" src="https://github.com/user-attachments/assets/bfd529fe-7861-437f-b856-018881f7c66f" />
 
-
+---
 ## Problem Statement
 
 Managing infrastructure manually at scale is slow, error-prone, and not repeatable. Spinning up EC2 instances through the AWS Console has no version control and cannot be automated. Installing Docker across multiple nodes manually introduces configuration drift. Setting up monitoring node-by-node is fragile and produces inconsistent results.
@@ -22,10 +24,6 @@ Managing infrastructure manually at scale is slow, error-prone, and not repeatab
 This project solves all three layers in a single command — `git push`. Spacelift orchestrates a dependency-chained stack pipeline: infrastructure provisioning triggers Docker installation, which triggers monitoring stack deployment. No manual console interaction at any layer.
 
 ---
-
-## Architecture & Network Flow
-
-> See architecture diagram above for full visual topology.
 
 ### Spacelift Stack Pipeline
 
